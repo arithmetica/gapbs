@@ -13,6 +13,7 @@
 #include "pvector.h"
 #include "util.h"
 
+#include "file_graph_c.h" 
 
 /*
 GAP Benchmark Suite
@@ -216,8 +217,30 @@ class Reader {
     return el;
   }
 
+  EdgeList ReadInBin(std::ifstream &in, bool &needs_weights) {
+    FileGraph graph;
+    graph.structureFromFile(filename_);
+    EdgeList el;
+
+    for (FileGraph::iterator ii = graph.begin(), ei = graph.end(); ii != ei; ++ii) {
+      NodeID_ u = *ii;
+      for (FileGraph::edge_iterator jj = graph.edge_begin(u), ej = graph.edge_end(u); jj != ej; ++jj) {
+        NodeID_ dst = graph.getEdgeDst(jj);
+        WeightT_& weight = graph.getEdgeData<WeightT_>(jj);
+        //std::cout << u << "\t" << dst << "\t" << weight << "\n";
+        NodeWeight<NodeID_, WeightT_> v;
+        v.v = dst;
+        v.w = weight;
+        el.push_back(Edge(u, v));
+      }
+    }
+    needs_weights = false;
+    return el;
+  }
+
   EdgeList ReadFile(bool &needs_weights) {
     Timer t;
+    std::cout << "Starting to read file: " << filename_ << std::endl;
     t.Start();
     EdgeList el;
     std::string suffix = GetSuffix();
@@ -238,6 +261,9 @@ class Reader {
       el = ReadInMetis(file, needs_weights);
     } else if (suffix == ".mtx") {
       el = ReadInMTX(file, needs_weights);
+    } else if (suffix == ".bin" || suffix == ".bin_cleaned") {
+      // assume that all binary graph inputs have weights already.
+      el = ReadInBin(file, needs_weights);
     } else {
       std::cout << "Unrecognized suffix: " << suffix << std::endl;
       std::exit(-3);
