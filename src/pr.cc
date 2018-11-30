@@ -11,6 +11,7 @@
 #include "graph.h"
 #include "pvector.h"
 
+#define APPROX
 
 /*
 GAP Benchmark Suite
@@ -51,9 +52,14 @@ pvector<ScoreT> PageRankPull(const Graph &g, int max_iters,
       scores[u] = base_score + kDamp * incoming_total;
       error += fabs(scores[u] - old_score);
     }
+#ifdef DEBUG
     printf(" %2d    %lf\n", iter, error);
+#endif
+
+#ifndef APPROX
     if (error < epsilon)
       break;
+#endif
   }
   return scores;
 }
@@ -88,7 +94,8 @@ bool PRVerifier(const Graph &g, const pvector<ScoreT> &scores,
     error += fabs(base_score + kDamp * incomming_sums[n] - scores[n]);
     incomming_sums[n] = 0;
   }
-  PrintTime("Total Error", error);
+  //PrintTime("Total Error", error);
+  std::cout << "Total Error: " << error << "\n";
   return error < target_error;
 }
 

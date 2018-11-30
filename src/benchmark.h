@@ -107,19 +107,26 @@ void BenchmarkKernel(const CLApp &cli, const GraphT_ &g,
     trial_timer.Start();
     auto result = kernel(g);
     trial_timer.Stop();
+#ifdef REPORT_TIME
     PrintTime("Trial Time", trial_timer.Seconds());
+#endif
     total_seconds += trial_timer.Seconds();
     if (cli.do_analysis() && (iter == (cli.num_trials()-1)))
       stats(g, result);
     if (cli.do_verify()) {
       trial_timer.Start();
-      PrintLabel("Verification",
-                 verify(std::ref(g), std::ref(result)) ? "PASS" : "FAIL");
+      //PrintLabel("Verification",
+                 //verify(std::ref(g), std::ref(result)) ? "PASS" : "FAIL");
+	  verify(std::ref(g), std::ref(result));
       trial_timer.Stop();
+#ifdef REPORT_TIME
       PrintTime("Verification Time", trial_timer.Seconds());
+#endif
     }
   }
+#ifdef REPORT_TIME
   PrintTime("Average Time", total_seconds / cli.num_trials());
+#endif
 }
 
 #endif  // BENCHMARK_H_
