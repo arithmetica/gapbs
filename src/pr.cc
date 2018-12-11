@@ -11,7 +11,10 @@
 #include "graph.h"
 #include "pvector.h"
 
+#include "platform_atomics.h"
+#include <atomic>
 #define APPROX
+#define PUSH
 
 /*
 GAP Benchmark Suite
@@ -32,6 +35,7 @@ using namespace std;
 typedef float ScoreT;
 const float kDamp = 0.85;
 
+#ifdef PULL
 pvector<ScoreT> PageRankPull(const Graph &g, int max_iters,
                              double epsilon = 0) {
   const ScoreT init_score = 1.0f / g.num_nodes();
@@ -63,7 +67,49 @@ pvector<ScoreT> PageRankPull(const Graph &g, int max_iters,
   }
   return scores;
 }
+#endif
 
+#ifdef PUSH
+pvector<ScoreT> PageRankPush(const Graph &g, int max_iters,
+                             double epsilon = 0) {
+                              const ScoreT init_score = 1.0f / g.num_nodes();
+  const ScoreT base_score = (1.0f - kDamp) / g.num_nodes();
+  pvector<ScoreT> scores(g.num_nodes(), init_score);
+  pvector<ScoreT> outgoing_contrib(g.num_nodes());
+  std::atomic<ScoreT> *incoming_total = new std::atomic<ScoreT>[g.num_nodes()];
+  for (int iter=0; iter < max_iters; iter++) {
+    double error = 0;
+    #pragma omp parallel for
+    for (NodeID n=0; n < g.num_nodes(); n++)
+      outgoing_contrib[n] = scores[n] / g.out_degree(n);
+    #pragma omp parallel for schedule(dynamic, 64)
+    for (NodeID u=0; u < g.num_nodes(); u++) {
+      for (NodeID v : g.out_neigh(u)) {
+        //double val;
+        //incoming_total[v]*/&val, outgoing_contrib[u]);
+        incoming_total[v].fetch_add(outgoing_contrib[u], std::memory_order_relaxed);
+        //val = __sync_fetch_and_add(&val, 1);
+      }
+    }
+    #pragma omp parallel for reduction(+: error) schedule(dynamic, 64)
+    for (NodeID n=0; n < g.num_nodes(); n++) {
+      ScoreT old_score = scores[n];
+      scores[n] = base_score + kDamp * incoming_total[n];
+      error += fabs(scores[n] - old_score);
+    }
+    
+#ifdef DEBUG
+    printf(" %2d    %lf\n", iter, error);
+#endif
+
+#ifndef APPROX
+    if (error < epsilon)
+      break;
+#endif
+  }
+  return scores;
+}
+#endif
 
 void PrintTopScores(const Graph &g, const pvector<ScoreT> &scores) {
   vector<pair<NodeID, ScoreT>> score_pairs(g.num_nodes());
@@ -107,7 +153,11 @@ int main(int argc, char* argv[]) {
   Builder b(cli);
   Graph g = b.MakeGraph();
   auto PRBound = [&cli] (const Graph &g) {
+    #ifdef PULL
     return PageRankPull(g, cli.max_iters(), cli.tolerance());
+    #elif defined PUSH
+    return PageRankPush(g, cli.max_iters(), cli.tolerance());
+    #endif
   };
   auto VerifierBound = [&cli] (const Graph &g, const pvector<ScoreT> &scores) {
     return PRVerifier(g, scores, cli.tolerance());
